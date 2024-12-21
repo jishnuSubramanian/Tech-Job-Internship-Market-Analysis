@@ -1,0 +1,462 @@
+---
+title: "College Tech Hiring: The Attributes to Land a Internship/Job"
+date: "2024-12-13"
+author: "Charles Strate and Jishnu Subramanian"
+output: 
+  pdf_document:
+    number_section: true
+---
+
+```{r setup, include=FALSE, message = FALSE, results = FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(caret)
+library(knitr)
+library(dplyr) # utilities
+library(ggplot2) # plotting
+library(tidyr) # utilities
+library(zoo) # for na.approx
+library(broom) # for tables 
+library(rpart) # regression and classification trees
+library(pROC) # roc plot
+library(randomForest) # for randomForest
+library(tibble) #from lecture code regarding formatting
+
+rand.v = "4.3.2"
+seed.val = 123456
+
+```
+
+
+# Domain Overview & Project Description
+
+> We want to assess the undergraduate job and internship market concerning entry-level tech positions at FAANG companies. With the job and internship market continuing to become more competitive within the Computer Science domain, we wish to assess what attributes many people have in common and therefore are important from the perspective of tech employers. While this is our major question of interest, we also wish to delve into how specific traits such as number of language proficiency and prior research experience help boost internship opportunities. The scope we would take on identifying these attributes is to look at recent graduate FAANG employees and identify their common factors. By looking at the common factors of many individuals who have multiple internships, we can determine what factors have allowed them to gain such internships and further work experience. We are analyzing the data to understand the importance of various attributes towards predicting the number of internships a person has, and doing further analysis regarding the current internship/job market in tech. 
+
+
+# Data Overview
+
+
+## Dataset Description
+
+> We developed and manually scraped the "Big-Tech Attributes" data set for our analysis. The data set contains multiple attributes of 150 individuals/data points who have recently graduated from a certain set of colleges known for their distinction in computer science and STEM. These graduates are all currently working in major FAANG companies, and this is the premise from which attributes were collected to see the credentials of each individual [1]. The credentials are related to aspects of what employers would look at such as the number of projects, if the individual has various certifications, is proficient in many languages and frameworks, etc. Our data also includes graduation year, which may indicate employment trends based on a certain year's time frame and economy. By getting data on these individuals who work in FAANG following their undergraduate degree, more info can be analyzed regarding what traits may have landed them internships (outcome variable in data) and also their current jobs. 
+
+\newpage
+## Important Variables
+
+> **Research**: Categorical \
+> -- If the individual did tech-related undergraduate research during college (0 = No; 1 = Yes) \
+> **N-Proj**: Numeric \
+> -- Number of major projects completed which are resume-relevant \
+> **Github**: Categorical \
+>--  If the individual has an affiliated github account (0 = No; 1 = Yes) \
+> **Certifications**: Numeric \
+> -- Number of relevant tech-related certifications \
+> **Grad**: Categorical \
+> -- Year of Undergraduate Graduation \
+> **Languages**: Numeric \
+> -- Number of relevant languages/frameworks the individual has used in all relevant work-experience \
+> **Connections**: Categorical \
+> -- Number of LinkedIn connections. All connections past 500 are classified as 500+ \
+> **Outcome Variable - Internships**: Numeric \
+> -- Number of relevant internships this person had as an undergraduate \
+
+## Outlier and Missing Value Mitigation
+> It must be noted that we have decided to keep outliers as we believe every individual's portfolio is unique and will show a different perspective on how they were able to gain such internship/job experience. There may be a correlation between their attributes and how many internships they have, which is something we wish to analyze. In terms of missing values, we have missing data within the "N.Proj" and "Languages" variable columns for certain data points. We are using a built-in approximation (na.approx) to manage any missing data for these 2 columns.\
+ 
+```{r echo = FALSE, out.width="55%", out.height="55%", fig.align = 'center'}
+hiring.df <- read.csv("BigTechAttributes.csv")
+
+hiring.df$School <- factor(hiring.df$School)
+hiring.df$Research <- factor(hiring.df$Research, levels = c(0,1), labels = c("No Research", "Yes Research"))
+hiring.df$Github <- factor(hiring.df$Github, levels = c(0,1), labels = c("No GitHub", "Yes GitHub"))
+hiring.df$Grad <- factor(hiring.df$Grad)
+hiring.df$Connections <- factor(hiring.df$Connections)
+
+info.df <- data.frame(
+  Metric = c("# of Languages N/A's", "# of N.Proj N/A's","Total N/A's"),
+  Count = c(sum(is.na(hiring.df$Languages)), sum(is.na(hiring.df$N.Proj)), sum(is.na(hiring.df$Languages)) + sum(is.na(hiring.df$N.Proj)))
+)
+
+kable(info.df, caption = "Missing Value Identification")
+```
+
+
+\newpage
+## Analysis of Outcome Variable: No. of Internships 
+
+As a reference, below presents general summary statistics of the outcome variable: Internships.
+
+```{r echo = FALSE}
+
+#Using approximations to fill in any NA's present for these 2 columns
+hiring.df$N.Proj <- na.approx(hiring.df$N.Proj)
+hiring.df$Languages<- na.approx(hiring.df$Languages)
+
+```
+
+
+```{r echo=FALSE, out.width="55%", out.height="55%", fig.align = 'center'}
+
+s <- summary(hiring.df$Internships)
+Statistic <- names(s)
+Value <- round(unname(s), 3)
+d <- cbind(Statistic, Value)
+kable(d, caption = "Descriptive Statistics of Internship Count" )
+
+```
+
+
+
+```{r echo=FALSE, out.width="55%", out.height="55%", fig.align = 'center', fig.cap="Boxplot, Histogram and Density Curve of Number of Internships"}
+
+
+par(mfrow = c(1, 2))
+
+boxplot(hiring.df$Internships, main = "",
+        ylab = "Number of Internships",
+        col = "cyan1",
+        border = "black")
+
+hist(hiring.df$Internships, main="",
+          col="cyan1", 
+          border="black",
+          prob = TRUE,
+          xlab = "Number of Internships")
+
+lines(density(hiring.df$Internships), # density plot
+ lwd = 2,
+ col = "gray14")
+
+
+```
+>The boxplot and histogram provide insight into the point that the data is slightly skewed right, with a much larger density of individuals having up to 4 internships prior to their job when compared to those with more internships. The consensus from the mean and median show that approximately 3 to 4 internships occur while individuals are still in college prior to landing a FAANG job. It must be noted that there are some extreme cases in which no internships are present or the number of internships is extensively high such as 8 -- we have decided to keep these points to see how they may show insight into the importance of certain factors such as number of projects and research, etc. We can potentially find conclusions in the point that many employers see having a strong set of 3 to 4 internships/work experience as quite important. 
+
+\newpage
+## Analysis of Language Attribute 
+
+> A potentially important attribute that would allow for a higher chance of hiring would be proficiency in a wide array of languages. We will be assessing this factor's summary statistics to get a better understanding of what the current standing is within the early tech career world for language proficiency. 
+
+
+```{r echo=FALSE, out.width="55%", out.height="55%", fig.align = 'center'}
+
+s <- summary(hiring.df$Languages)
+Statistic <- names(s)
+Value <- round(unname(s), 3)
+d <- cbind(Statistic, Value)
+kable(d, caption = "Descriptive Statistics of Language Proficiency Count" )
+
+```
+
+
+```{r echo=FALSE, out.width="55%", out.height="55%", fig.align = 'center', fig.cap="Boxplot, Histogram and Density Curve of Number of Internships"}
+
+
+par(mfrow = c(1, 2))
+
+boxplot(hiring.df$Languages, main = "",
+        ylab = "Number of Languages",
+        col = "cyan1",
+        border = "black")
+
+hist(hiring.df$Languages, main="",
+          col="cyan1", # column color
+          border="black",
+          prob = TRUE,
+          xlab = "Number of Languages")
+
+lines(density(hiring.df$Languages), # density plot
+ lwd = 2, # thickness of line
+ col = "gray14")
+
+
+```
+
+> The summary statistics provide insight into the point that the overall number of languages individuals are generally proficient in is 12-13 languages. The density curve and boxplot help show that there is a relatively strong right skew showing how many people are proficient in more languages than the average. There is a wide range of language proficiency with the minimum being 2 and the maximum being 36 languages. This may indicate that many individuals within the tech field must continue to become accustomed to working in more languages and frameworks based on the needs of their jobs and work. Every job and internship experience differs in terms of its technical needs and this wide margin of difference may allude to this point. While this is not a comprehensive analysis, it does help show that being prepared and having knowledge of various frameworks and languages before being hired may stand out to employers. 
+
+\newpage
+# Linear Regression Model Analysis
+
+> We want to identify the factors which have the greatest impact on landing internships. We begin by fitting 2 linear regression models to see what factors are statistically signifcant from this perspective. We will be fitting these models using randomized training data and using random test data to assess the results of the respective models. 
+
+```{r echo = FALSE}
+
+RNGversion("4.3.2")
+set.seed(123456)
+
+index.train <- createDataPartition(y = hiring.df$Internships, p = 0.80, list = FALSE)
+
+# uses random selection to create 80-20 proportion for training and testing sets
+train.data <- hiring.df[index.train,]
+test.data <- hiring.df[-index.train,]
+
+#Making a manual model, with the indication that we believe that School, N.Proj, Languages, and Research are the most important variables. 
+
+fit.manual <- lm(Internships ~ School + N.Proj + Languages + Research, data = train.data)
+
+train.control <- trainControl(method = "cv", number = 10) 
+
+#cv with the manual model
+model.manual <- train(Internships ~ School + Research + N.Proj + Languages, data = train.data,
+                      method = "lm",
+                      trControl = train.control)
+
+```
+
+## Manually Fitted Model 
+
+> We begin by developing a manually fitted cross-validated (10-fold) linear model using the training data. From our perspective, we believe the most intuitive factors that employers may view as meaningful would be an individual's school, the number of resume-worthy projects one has, the number of proficient languages, and whether an individual has conducted tech-related research. Keeping this in mind, we fitted the model with the response variable being Internships (number of internships), and used the 4 variables School, N.Proj, Languages, and Research as predictors. The result of the respective model and fit is presented in the table and adjusted r-squared evaluation below. 
+
+```{r echo = FALSE, results = 'asis', out.width="55%", out.height="55%", fig.align = 'center'}
+
+estimate.ordered.model <- tidy(model.manual$finalModel)
+actual.ordering <- order(estimate.ordered.model$estimate, decreasing = TRUE)
+manual.model.table <- estimate.ordered.model[actual.ordering,]
+
+kable(manual.model.table, caption = "Manual Fit Results: Coefficients of the Manual Linear Regression Model")
+
+
+adrsq.manual <- round(summary(model.manual)$adj.r.squared, 4)[1]
+formatted.str <- sprintf("The adjusted R-squared for the fitted model was: %.4f",adrsq.manual)
+cat(formatted.str)
+
+
+```
+\
+
+While the R-squared value is rather low (0.1899) given that there are definitely other factors involved in the hiring process, it is evident that the school an individual attends plays a factor in the employment process. Based on the results, multiple schools show a statistically significant impact on opportunities to land internships such as: GaTech, MIT, Stanford, UC Berkeley, UIUC, UMass Amherst, and the University of Michigan. While we will be assessing another linear model, this baseline provides importance in that certain schools, even among the top STEM programs in the country, can have varying opportunities based on their relationship with FAANG employers, etc.  
+
+\newpage
+
+## Step Function Fitted Model 
+
+
+``` {r echo = FALSE, warning = FALSE}
+
+RNGversion("4.3.2")
+set.seed(123456)
+
+#Using step to find variables that impact outcome most which will then be used for cross validation, etc 
+fit.1 <- lm(Internships ~ ., data = train.data)
+fit.step <- step(fit.1, trace=0)
+
+train.control <- trainControl(method = "cv", number = 10) 
+
+#the model.step uses the equation we found from the step model
+#cv with step model 
+
+model.step <- train(Internships ~ School + N.Proj + Certifications + 
+              Grad, data = train.data,
+              method = "lm", 
+              trControl = train.control)
+
+```
+
+> We will next be assessing a STEP function fitted cross-validated (10 fold) linear model using the training data.\
+> The model selected by stepwise regression using the step function was:\
+> -- Internships ~ School + N.Proj + Certifications +  Grad\
+
+```{r echo = FALSE, results = 'asis', out.width="55%", out.height="55%", fig.align = 'center'}
+
+estimate.ordered.model.step <- tidy(model.step$finalModel)
+actual.ordering.step <- order(estimate.ordered.model.step$estimate, decreasing = TRUE)
+step.model.table <- estimate.ordered.model.step[actual.ordering.step,]
+
+kable(step.model.table, caption = "Step Fit Results: Coefficients of the Step Linear Regression Model")
+
+
+#Reporting results of the linear regression for the manual model 
+adrsq.step <- round(summary(model.step)$adj.r.squared, 4)[1]
+formatted.str.step <- sprintf("The adjusted R-squared for the step function fitted model was: %.4f", adrsq.step)
+cat(formatted.str.step)
+
+```
+
+The step function model used some varied variables in comparison to the manual model in which certifications and grad years were taken into account while language proficiency and research were excluded. From this analysis, it can be seen that certain schools show a statistically significant impact upon the number of internships an individual has. The schools that showed such significance were: GaTech, Stanford, UC Berkeley, UIUC, UMass Amherst, and the University of Michigan. Additionally, the number of noteworthy projects an individual has is highlighted to be statistically significant as this may show an employer that language proficiency and overall technical knowledge can be applied to real-world applications. Certifications, while significant, show a negative impact upon the internship outcome variable showing that they may not have a major importance upon the recruitment process as a whole. While the 2 models may have slight differences, they show the school an individual attends can make a major difference on the outcome of being employed. But beyond this point, an individual's capability to apply knowledge to projects and being certified in certain skills definitely helps. With regard to the R-squared value, we do see an increase from the manually developed model of 0.2674 compared to 0.1899. While this still does not show that the model is fully able to explain variation well, it does show that the predictors included in this variable present a better representation of what variables impact the outcome (internships).
+
+\newpage
+## Factor/Variable Importance 
+
+> Given the results of the model, the figure below shows the respective importance of all positive significant variables to see how much each attribute impacts the outcome of an internship. 
+
+```{r echo = FALSE, out.width="55%", out.height="55%", fig.align = 'center'}
+
+summary.manual <- summary(model.manual)
+sig.coef.manual <- summary.manual$coefficients[summary.manual$coefficients[,4] < 0.05, ]
+
+#Used the order function to order this table of significant coefficients based on a decreasing order scheme. 
+#We are doing this based on the value of the "Estimate" column in the summary table called sig.coef.manual in this specific case. We are also removing the intercept and any negative significant values when making the data frame as we want to explain factors that impact the outcome variable in a positive manner. 
+sig.coef.manual <- sig.coef.manual[order(sig.coef.manual[, 1], decreasing = TRUE),]
+manual.df <- as.data.frame(sig.coef.manual[c(1:3,5:8), 1])
+
+
+
+    
+#Follow same logic for the step function model 
+
+
+summary.step <- summary(model.step)
+sig.coef.step <- summary.step$coefficients[summary.step$coefficients[,4] < 0.05,]
+
+sig.coef.step <- sig.coef.step[order(sig.coef.step[, 1], decreasing = TRUE),]
+step.df <- as.data.frame(sig.coef.step[c(2:8),1])
+
+par(mfrow = c(1, 2))
+
+kable(manual.df, col.names = c("Predictor", "Estimate Value"), 
+      caption = c("Sorted Significant Predictors of Manual Model"))
+
+kable(step.df, col.names = c("Predictor", "Estimate Value"), 
+      caption = c("Sorted Significant Predictors of Step Model"))
+
+
+```
+
+> As seen with these tables, both tables show the importance put upon school and thus the various connections and quotas employers have with a school. But it also alludes to the fact that certain courses and education at these schools may provide better emphasis on real-world experience within the tech field. The institutions and their presence within the tech world may better prepare students for internship experience which could be a point of consideration for employers both for internships and jobs. Additionally, while a small significance, the number of projects also shows strength as previously explained. 
+
+\newpage
+## Predictive Ability Evaluation
+> To analyze the predictive ability of these 2 respective models, we will be analyzing their RMSE (units in terms of number of internships) when used to predict the outcome of the randomized testing data.
+
+```{r echo = FALSE, results = 'asis', out.width="55%", out.height="55%", fig.align = 'center'}
+# evaluate manual model's predictive ability on test data
+pred.manual <- predict(fit.manual, test.data, interval = "prediction", level = 0.95)
+actual.values.manual <- test.data$Internships
+pred.vals.manual <- pred.manual[,1]
+rmse.manual.model <- sqrt(mean((actual.values.manual - pred.vals.manual)^2))
+
+manual.str <- sprintf("The RMSE for the manually fitted model was: %.4f", rmse.manual.model)
+cat(manual.str)
+
+```
+
+
+```{r echo=FALSE, results = 'asis', out.width="55%", out.height="55%", fig.align = 'center'}
+# Evaluates step model’s predictive ability on test data
+pred.step <- predict(fit.step, test.data, interval="prediction", level=0.95)
+actual.values <- test.data$Internships
+pred.vals <- pred.step[,1]
+rmse.step.model <- sqrt(mean((actual.values - pred.vals)^2))
+
+step.str <- sprintf("The RMSE for the step fitted model was: %.4f", rmse.step.model)
+cat(step.str)
+
+```
+
+```{r echo = FALSE, out.width="55%", out.height="55%", fig.align = 'center', fig.cap="RMSE Over 10 Folds For Both Models."}
+num.folds <- 10
+rmse.step <- model.step$resample$RMSE
+rmse.manual <- model.manual$resample$RMSE
+plot(rmse.step, 
+     xlab = "Fold",
+     xaxp = c(1, num.folds, num.folds-1),
+     ylab = "Rmse",
+     ylim=c(min(rmse.manual), max(rmse.step)),
+     col = "cyan1")
+lines(rmse.step, col = "cyan1")
+points(rmse.manual, col="gray14")
+lines(rmse.manual, col = "gray14")
+
+legend("bottomright", legend=c("step", "manual"),
+       col=c("cyan1", "gray14"), lty=1:1, cex=0.5)
+```
+
+> While both models have similar and unique predictors being used, they are in the same general range of RMSE. This helps show the fact that on average these models are able to predict an individual's number of internships being off by approx. 1.36 to 1.47 internships. While this is not ideal, it is a good standard if it is able to predict within 1 to 2 internships especially since many of the individuals within the data set have over 3 internships (as stated by the mean). From a predictor standpoint, it seems the manually developed model is slightly better in terms of its error showing the fact that the predictors of School, Research, Number of Projects, and Language Proficiency all play a role in gaining an internship. But, the graph helps show that for many of the folds (3-5, & 7 in specific), the RMSE of the step model was considerably smaller, helping show that the predictors of this model also give strong results when tested in certain cases. From this holistic standpoint, it is clear that certain variables such as the presence of a GitHub, being well-connected professionally or on LinkedIn, and graduate year do not have as much importance.
+
+
+\newpage
+
+# Random Forest Modeling Analysis
+
+> We now will be looking more in-depth at the importance of different factors through Random Forest Modeling. Our goal is to utilize 2 different set-ups of a Random Forest Model to analyze different factors that impact the prediction of internships for an individual. Our analysis is centered around 2 RF (Random Forest) Models: 
+
+1. Cross-Validated (10-Fold) Random Forest Model
+2. Manually Built Random Forest Model W/ 6 Predictors Randomly Selected At Each Split
+
+
+## Cross Validated RF Importance Analysis
+
+```{r echo = FALSE, message=FALSE, out.width="55%", out.height="55%", fig.align = 'center', fig.cap="Predictor Importance- Random Forest Model."}
+
+RNGversion(rand.v)
+set.seed(seed.val)
+
+
+cv.rf <- train(Internships ~ ., data = train.data,
+                      method = "rf",
+                      trControl = train.control)
+
+internships.rf<-randomForest(Internships ~., data=train.data, mtry=6, importance=TRUE)
+
+imp.cv <- varImp(cv.rf)
+cv.df <- imp.cv$importance
+ndf <- rownames_to_column(cv.df, var="Predictor")
+fdf <- cbind(ndf[1], ndf[2])
+colnames(fdf)[2] <- "Overall"
+
+cv.df <- fdf[order(fdf$Overall, decreasing = TRUE),]
+
+cv.df <- cv.df[1:10,]
+
+kable(cv.df, row.names = FALSE, caption = "Rel. Importance of Top 10 Predictors: Cross Validated RF Model")
+
+```
+
+> The cross-validated model's results present the relative importance of various factors in making predictions concerning the number of internships an individual has. While there is a wide range of factors and specific levels to these factors, we are assessing the top 8-10 within both models. The most glaring results from this would be the point that both the number of language proficiency and the number of resume-worthy projects had an importance score of above 95/100. This indicates that these 2 factors are clearly considered within the model every time a prediction is made; this also may extend to the point that an employer may very highly consider these points. Having an emphasis be put on language proficiency and how they are applied to projects show 2 connected components of the hiring process. It must also be noted that certain schools such as the University of Massachusetts and Georgia Tech were also crucial in predictions. Another interesting point to be noted is that being well connected with over 500+ connections may have helped with the internship process. Having connections, speaking with professionals within the field, and understanding the importance of networking are underlying factors that may help as seen through this model. We can also conclude that certifications do impact internship recruiting processes; while it may not be just the number of certifications but rather the value of the certification itself. Being over an overall of 50 in terms of importance, this hints at the point that having valued certifications from AWS, Azure, Snowflake, etc, will help with the recruiting process.
+
+\newpage
+
+## Manually-Built RF Importance Analysis 
+
+```{r echo = FALSE, out.width="55%", out.height="55%", fig.align = 'center', fig.cap="Var. Importance Plot - Manual-RF-Model"}
+varImpPlot(internships.rf, main = "", col = "gray14", bg = "cyan1")
+```
+
+> Now having the results of both models, there are clear similarities in factors having a strong importance: School, Number of Projects, Certifications, and Connections. The top 4 from the model above are also seen to be a substantial factor in the cross-validated random forest model showing its overall importance from an employer's perspective. From a broader standpoint, these factors show that gaining an internship involves components of what a person does both within and outside of school. Applying what is learned in school through certifications and practical projects is a crucial talking point in interviews. Additionally, being well connected and utilizing the aid of people within industry may provide a breakthrough into the market. 
+
+
+\newpage
+## Predictive Ability Analysis 
+
+> To analyze the predictive ability of these 2 respective random forest models, we will again be analyzing their RMSE (units in terms of number of internships) when used to predict the outcome of the randomized testing data.
+
+```{r echo = FALSE, out.width="55%", out.height="55%", fig.align = 'center'}
+
+#Getting the rmse for this table based on training data and comparing to testing data
+
+cv.rf.pred<- predict(cv.rf, test.data)
+cv.rmse <- sqrt(mean((cv.rf.pred - test.data$Internships)^2))
+
+rf.pred <- predict(internships.rf, test.data)
+rf.rmse <- sqrt(mean((rf.pred - test.data$Internships)^2))
+
+rmse.df <- data.frame(
+  Model = c("Random Forest CV", "Random Forest Reg"),
+  RMSE = c(cv.rmse, rf.rmse))
+
+kable(rmse.df, col.names = c("Model", "RMSE"), caption = "Acccuracies/RMSE for Tree Models.")
+
+```
+
+> Both models show a similar range of RMSE, with the cross-validated RF model having an overall slightly better accuracy in terms of error. These models similar to the linear regression models can predict an individual's number of internships being off by approx. 1.46 to 1.52 internships. Similar to previously stated remarks, it is a good error range to be within especially when many individuals have a much higher internship count above the mean of 3-4. The error for our analysis purposes is reasonable and within an acceptable range, meaning that the outcomes we have deduced do have significance. Given these reasonable RMSEs, we can conclude that our findings regarding the specific predictors do have strong/valid arguments to be highly considered by employers. Focusing on the cross-validated RF model findings (as it has the lower RMSE), the predictors of Languages, Number of Projects, and Certifications have further emphasis and validation of being important in attaining an internship and building an overall individual portfolio. 
+
+\newpage
+# Conclusions
+
+>	In conclusion, our two modeling techniques (Linear Regression and Random Forest) have allowed us to dynamically analyze which attributes lend themselves to a higher number of internship experiences.
+
+> The manually fitted cross-validated (10-fold) linear model utilized the factors we believed would have the greatest effect on internship exposure as the predictors. The results of this model suggest that a person’s attended university greatly influences the number of internships that they have acquired, with Georgia Tech, UMass Amherst, and the University of Michigan being the three most important predictors. This could be owed to the fact that these programs offer important, effective, and applicable courses, have advantageous locational/industry connections, or a mixture of both.
+
+> The step-fitted cross-validated (10-fold) linear model utilized the factors selected by the stepwise regression as its predictors. The results of this model also suggest a strong correlation between certain schools and number of internships, with emphasis on Georgia Tech, UMass Amherst, and Stanford. The model also identifies the number of projects an individual has as an important factor, and identifies their number of certifications as a negatively influential factor. This suggests that relevant side-projects are beneficial in displaying technological aptitude, as they are often more demonstrative of one's computational ability and creativeness than certifications, which may be viewed as insignificant validations by companies. This model also does a slightly better job of explaining variation than the manually fitted model, but still only covers about 27 percent of variance.
+
+> The RMSE results for each model show that, on average, the manually fitted model predicts the number of internships off by 1.36, while the step-fitted model predicts the number of internships off by 1.47. While this is not amazing, this is still relatively impressive as the number of internships ranges from 0-8, with many individuals having 3 or more internships.
+
+> Progressing onto the second set of models, the cross-validated (10-fold) random forest model suggests that the two most important factors are an individual’s number of proficient languages and the number of resume-worthy projects. This suggests that these are likely the most important predictors in terms of expressing a person’s skill, knowledge, and capabilities separate from their school. The model also suggests that the number of certifications, and attending UMass Amherst or Georgia Tech are also relatively important factors.
+
+> The manually built random forest model suggests that the most important factors are School, Number of Projects, Certifications, and Connections. This is the first time that connections have been shown as greatly influential, but it could indicate that connections are an important tool for networking and employment reach. Unlike the step-fitted model, this model suggests that certifications are in fact a positively influential factor, and may be relevant to an applicant’s display of skill. This may bring up the notion that it is not about the number of certifications a person has, but rather the weight of the individual certifications they hold.
+
+\newpage
+> Across all of the models, it is evident that an individual’s school greatly influences their internship success. Both linear regression models suggest that Georgia Tech and UMass Amherst are the two most influential schools. This is again likely due to their acclaimed and constructive academics, their research and intern opportunities, and their locational connections. The random forest models also suggest that these schools are influential, but find an interesting insight into other attributes not directly related to an individual’s school. They both highlight the importance of side projects, which are often used to display a person’s critical thinking ability, creative interests, and natural proactivity. There are other factors observed by the models, but the general consensus seems to be that individuals who attend **UMass Amherst, Georgia Tech**, and have an abundance of **relevant projects** under their belt may have an advantage in landing internships at FAANG companies. What can be abstracted from these results is that having a strong education but also being able to apply this education to something beyond is what stands out to an employer. A project is a representation of what a person can learn and present, showing an impact they can make on society and within the workforce. As the job market continues to become more competitive, regardless of where a person goes to school, they still have the ability to bolster their portfolio and land an internship and/or job.
+
+
+\newpage
+# References
+1. https://docs.google.com/spreadsheets/d/1Hcv9uopLheBB-JVGIoy-yEZhcKcOO2zkrA_mhoxIGI4/edit?usp=sharing
